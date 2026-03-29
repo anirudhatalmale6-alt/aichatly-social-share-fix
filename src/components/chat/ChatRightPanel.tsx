@@ -355,44 +355,7 @@ export const ChatRightPanel = React.memo(function ChatRightPanel({ character, me
     const shareDescription = description || `Chat with ${character.name} on AiChatly`;
     const shareText = `${shareTitle}\n${shareDescription}`;
 
-    // Try Web Share API first (works great on mobile for WhatsApp, Telegram, etc.)
-    // This shares the actual character image as a file attachment.
-    if (navigator.share && (platform === "whatsapp" || platform === "telegram")) {
-      try {
-        // Download the character image as a blob for file sharing
-        const imageUrl = character.image_url;
-        if (imageUrl) {
-          const imgResponse = await fetch(imageUrl);
-          const blob = await imgResponse.blob();
-          const ext = blob.type.includes("png") ? "png" : "jpg";
-          const file = new File([blob], `${character.name}.${ext}`, { type: blob.type });
-
-          if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({
-              title: shareTitle,
-              text: `${shareDescription}\n${shareUrl}`,
-              files: [file],
-            });
-            setShowShareMenu(false);
-            toast.success(
-              language === "tr"
-                ? "Paylaşım penceresi açıldı. Paylaşım ödülü alındı."
-                : "Share window opened. Reward recorded."
-            );
-            return;
-          }
-        }
-      } catch (err: any) {
-        // User cancelled or Web Share not supported for files — fall through to URL method
-        if (err?.name === "AbortError") {
-          setShowShareMenu(false);
-          return;
-        }
-        console.warn("Web Share API with file failed, falling back to URL:", err);
-      }
-    }
-
-    // Fallback: URL-based sharing for desktop or when Web Share isn't available
+    // Open the specific platform's share popup directly
     let url = "";
 
     switch (platform) {
