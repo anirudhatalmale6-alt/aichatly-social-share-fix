@@ -330,10 +330,14 @@ export const ChatRightPanel = React.memo(function ChatRightPanel({ character, me
       return;
     }
 
-    // Always build share URL from the public site base.
+    // Always build share URL from the public site base. Using current href can produce
+    // localhost/private URLs that are not reachable from social apps/devices.
     const siteBase =
       process.env.NEXT_PUBLIC_SITE_URL ||
       (typeof window !== "undefined" ? window.location.origin : "");
+    // Social bots should receive exactly the chat URL (no query params).
+    // Since we can't track "click-through" anymore without a token in the URL,
+    // we record the share reward immediately after `prepare` succeeds.
     const shareUrl = new URL(`/chat/${character.id}`, siteBase).toString();
 
     try {
@@ -350,25 +354,27 @@ export const ChatRightPanel = React.memo(function ChatRightPanel({ character, me
     } catch (e) {
       console.error("Error verifying share reward:", e);
     }
-
     const shareTitle = `${character.name}${occupation ? ` - ${occupation}` : ""}`;
     const shareDescription = description || `Chat with ${character.name} on AiChatly`;
     const shareText = `${shareTitle}\n${shareDescription}`;
-
-    // Open the specific platform's share popup directly
+    
     let url = "";
 
     switch (platform) {
       case "facebook":
+        // Facebook uses Open Graph meta tags automatically
         url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
         break;
       case "twitter":
+        // Twitter uses Twitter Card meta tags automatically
         url = `https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`;
         break;
       case "whatsapp":
+        // Put URL first so chat apps detect it as a clickable link more reliably.
         url = `https://wa.me/?text=${encodeURIComponent(`${shareUrl}\n${shareText}`)}`;
         break;
       case "telegram":
+        // Telegram uses Open Graph meta tags for preview
         url = `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`;
         break;
     }
