@@ -161,24 +161,15 @@ export function ChatMiddlePanel({
         }
 
         if (user) {
-          // Delete messages first
-          const { error: messagesError } = await supabase
-            .from("messages")
-            .delete()
-            .eq("conversation_id", conversationId);
+          // Use server-side API to bypass RLS
+          const res = await fetch("/api/chat/delete-conversation", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId: user.id, conversationId }),
+          });
 
-          if (messagesError) {
-            throw messagesError;
-          }
-
-          // Delete conversation
-          const { error: conversationError } = await supabase
-            .from("conversations")
-            .delete()
-            .eq("id", conversationId);
-
-          if (conversationError) {
-            throw conversationError;
+          if (!res.ok) {
+            throw new Error("Failed to delete conversation");
           }
 
           toast.success(
@@ -188,8 +179,8 @@ export function ChatMiddlePanel({
           );
 
           // Dispatch event to notify parent to refresh and create new conversation
-          window.dispatchEvent(new CustomEvent("conversationDeleted", { 
-            detail: { conversationId } 
+          window.dispatchEvent(new CustomEvent("conversationDeleted", {
+            detail: { conversationId }
           }));
 
           // Stay on chat page - parent will handle creating new conversation
@@ -239,42 +230,60 @@ export function ChatMiddlePanel({
           }
         }
       } else if (deleteAction === "character") {
-        // Delete character
+        // Delete character - use server-side API to bypass RLS
         if (user) {
-          // Check if user is the creator
-          if (character.creator_id === user.id) {
-            // User created this character - soft delete
-            const { error } = await supabase
-              .from("characters")
-              .update({ deleted_at: new Date().toISOString() })
-              .eq("id", character.id);
+          const res = await fetch("/api/chat/delete-character", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId: user.id, characterId: character.id }),
+          });
 
-            if (error) throw error;
+          if (!res.ok) {
+            throw new Error("Failed to delete character");
+          }
+
+          toast.success(
+            language === "tr"
+              ? "Karakter ve sohbetler başarıyla silindi"
+              : "Character and chats deleted successfully"
+          );
+
+          router.push("/");
+        } else if (isGuest) {
+          // Guest user - clean up localStorage
+          const GUEST_MESSAGES_KEY = "guest_messages";
+          const GUEST_CONVERSATIONS_KEY = "guest_conversations";
+
+          try {
+            const storedMessages = localStorage.getItem(GUEST_MESSAGES_KEY);
+            if (storedMessages) {
+              const allMessages = JSON.parse(storedMessages);
+              const filteredMessages = allMessages.filter(
+                (m: Message) => {
+                  const conv = JSON.parse(localStorage.getItem(GUEST_CONVERSATIONS_KEY) || "[]")
+                    .find((c: any) => c.id === m.conversation_id && c.character_id === character.id);
+                  return !conv;
+                }
+              );
+              localStorage.setItem(GUEST_MESSAGES_KEY, JSON.stringify(filteredMessages));
+            }
+
+            const storedConvs = localStorage.getItem(GUEST_CONVERSATIONS_KEY);
+            if (storedConvs) {
+              const allConvs = JSON.parse(storedConvs);
+              const filteredConvs = allConvs.filter(
+                (c: any) => c.character_id !== character.id
+              );
+              localStorage.setItem(GUEST_CONVERSATIONS_KEY, JSON.stringify(filteredConvs));
+            }
 
             toast.success(
               language === "tr"
-                ? "Karakter başarıyla silindi"
-                : "Character deleted successfully"
+                ? "Karakter ve sohbetler başarıyla silindi"
+                : "Character and chats deleted successfully"
             );
-          } else {
-            // System character - remove from user's favorites and likes
-            await supabase
-              .from("favorites")
-              .delete()
-              .eq("user_id", user.id)
-              .eq("character_id", character.id);
-
-            await supabase
-              .from("likes")
-              .delete()
-              .eq("user_id", user.id)
-              .eq("character_id", character.id);
-
-            toast.success(
-              language === "tr"
-                ? "Karakter listenizden kaldırıldı"
-                : "Character removed from your list"
-            );
+          } catch (error) {
+            console.error("Error deleting guest character data:", error);
           }
 
           router.push("/");
